@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 import argparse
+import os
 import re
 import sys
-import time
-from urllib.parse import quote_plus
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
@@ -37,20 +36,11 @@ def find_column(headers: List[str], candidates: List[str]) -> Optional[int]:
     return None
 
 
-def build_headers(query: str) -> Dict[str, str]:
-    return {
-        "User-Agent": USER_AGENT,
-        "Accept": "application/json,text/plain,*/*",
-        "Referer": f"https://duckduckgo.com/?q={quote_plus(query)}&iax=images&ia=images",
-        "Origin": "https://duckduckgo.com",
-    }
-
-
 def get_vqd(query: str, session: requests.Session) -> str:
     response = session.get(
         "https://duckduckgo.com/",
         params={"q": query},
-        headers=build_headers(query),
+        headers={"User-Agent": USER_AGENT},
         timeout=30,
     )
     response.raise_for_status()
@@ -64,39 +54,25 @@ def get_vqd(query: str, session: requests.Session) -> str:
 
 
 def fetch_image_results(query: str, max_results: int, session: requests.Session) -> List[Dict]:
-    last_error = None
-    for attempt in range(3):
-        vqd = get_vqd(query, session)
-        params = {
-            "l": "us-en",
-            "o": "json",
-            "q": query,
-            "vqd": vqd,
-            "f": ",,,",
-            "p": "1",
-        }
-        try:
-            response = session.get(
-                "https://duckduckgo.com/i.js",
-                params=params,
-                headers=build_headers(query),
-                timeout=30,
-            )
-            response.raise_for_status()
-            data = response.json()
-            results = data.get("results", [])
-            return results[:max_results]
-        except requests.HTTPError as exc:
-            last_error = exc
-            status_code = exc.response.status_code if exc.response else None
-            if status_code in {403, 429, 500, 502, 503}:
-                time.sleep(2 * (attempt + 1))
-                continue
-            raise
-        except requests.RequestException as exc:
-            last_error = exc
-            time.sleep(2 * (attempt + 1))
-    raise RuntimeError(f"Failed to fetch image results after retries: {last_error}")
+    vqd = get_vqd(query, session)
+    params = {
+        "l": "us-en",
+        "o": "json",
+        "q": query,
+        "vqd": vqd,
+        "f": ",,,",
+        "p": "1",
+    }
+    response = session.get(
+        "https://duckduckgo.com/i.js",
+        params=params,
+        headers={"User-Agent": USER_AGENT},
+        timeout=30,
+    )
+    response.raise_for_status()
+    data = response.json()
+    results = data.get("results", [])
+    return results[:max_results]
 
 
 def safe_filename(name: str) -> str:
